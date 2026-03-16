@@ -9,18 +9,55 @@ import streamlit as st
 import torch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEMO_ROOT = PROJECT_ROOT / "demo_assets"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from inference.compare_models import discover_models
 from inference.generate import load_generator
-from utils.io import BENCHMARKS_DIR, COMPARISONS_DIR, resolve_fast_checkpoint, resolve_quality_checkpoint
 from utils.metrics import save_image_grid
 from utils.seed import set_seed
 
 
 def available_models() -> Dict[str, Path]:
-    return {name: path for name, path in discover_models()}
+    candidates = [
+        ("baseline", resolve_artifact_path("checkpoints", "best.pt")),
+        ("pruned_20", resolve_artifact_path("checkpoints", "pruned_20.pt")),
+        ("pruned_40", resolve_artifact_path("checkpoints", "pruned_40.pt")),
+        ("pruned_60", resolve_artifact_path("checkpoints", "pruned_60.pt")),
+        ("quantized", resolve_artifact_path("checkpoints", "quantized_int8.pt")),
+    ]
+    return {name: path for name, path in candidates if path is not None}
+
+
+def artifact_roots() -> list[Path]:
+    return [PROJECT_ROOT / "outputs", DEMO_ROOT]
+
+
+def resolve_artifact_path(*parts: str) -> Optional[Path]:
+    for root in artifact_roots():
+        candidate = root.joinpath(*parts)
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def active_artifact_root() -> Path:
+    for root in artifact_roots():
+        if root.joinpath("checkpoints", "best.pt").exists():
+            return root
+    return PROJECT_ROOT / "outputs"
+
+
+def resolve_quality_checkpoint_app() -> Optional[Path]:
+    return resolve_artifact_path("checkpoints", "best.pt") or resolve_artifact_path("checkpoints", "last.pt")
+
+
+def resolve_fast_checkpoint_app() -> Optional[Path]:
+    for filename in ["quantized_int8.pt", "best_pruned.pt", "pruned_60.pt", "pruned_40.pt", "pruned_20.pt", "best.pt"]:
+        candidate = resolve_artifact_path("checkpoints", filename)
+        if candidate is not None:
+            return candidate
+    return None
 
 
 def model_type_label(model_name: str) -> str:
@@ -104,16 +141,18 @@ def path_to_model_name(path: Path, models: Dict[str, Path]) -> str:
 
 
 def display_path_label(path: Path) -> str:
-    if path == resolve_quality_checkpoint():
+    quality_checkpoint = resolve_quality_checkpoint_app()
+    fast_checkpoint = resolve_fast_checkpoint_app()
+    if quality_checkpoint is not None and path == quality_checkpoint:
         return f"{path.name} (baseline / quality)"
-    if path == resolve_fast_checkpoint():
+    if fast_checkpoint is not None and path == fast_checkpoint:
         return f"{path.name} (adaptive fast target)"
     return path.name
 
 
 def benchmark_dataframe() -> Optional[pd.DataFrame]:
-    results_path = BENCHMARKS_DIR / "results.csv"
-    if not results_path.exists():
+    results_path = resolve_artifact_path("benchmarks", "results.csv")
+    if results_path is None or not results_path.exists():
         return None
     df = pd.read_csv(results_path)
     rename_map = {
@@ -174,6 +213,12 @@ def render_overview() -> None:
             "- The intended conclusion is that edge deployment gains efficiency through compression, but visual fidelity usually decreases."
         )
 
+    if active_artifact_root() == DEMO_ROOT:
+        st.info(
+            "This deployed app is currently using bundled demo artifacts stored in the repository. "
+            "The interactive story is real, but the checkpoints and comparison outputs were pre-generated offline for cloud display."
+        )
+
 
 def render_problem_statement() -> None:
     st.header("Problem Statement")
@@ -229,7 +274,9 @@ def render_generated_output(
     with torch.no_grad():
         images = generator.sample(num_samples, "cpu")
 
-    grid_path = BENCHMARKS_DIR / "streamlit_preview.png"
+    preview_dir = active_artifact_root() / "benchmarks"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    grid_path = preview_dir / "streamlit_preview.png"
     save_image_grid(images, grid_path, title=f"{selected_path.stem} ({load_mode})", nrow=4)
     st.image(str(grid_path), caption=f"Live output from {display_path_label(selected_path)}")
     st.write(output_explanation(active_model_name))
@@ -249,7 +296,7 @@ def render_generated_output(
 def comparison_card(column, model_name: str, models: Dict[str, Path]) -> None:
     column.subheader(human_model_name(model_name))
     column.caption(model_type_label(model_name))
-    image_path = COMPARISONS_DIR / f"{model_name}_grid.png"
+    image_path = active_artifact_root() / "samples" / "comparisons" / f"{model_name}_grid.png"
     if image_path.exists():
         column.image(str(image_path), use_container_width=True)
     else:
@@ -267,7 +314,10 @@ def render_comparison(models: Dict[str, Path]) -> None:
     st.write("All comparison outputs below use the same latent vectors so the visual differences are fair.")
 
     combined_path = COMPARISONS_DIR / "combined_comparison.png"
-    summary_path = COMPARISONS_DIR / "comparison_summary.md"
+    root = active_artifact_root()
+    comparisons_dir = root / "samples" / "comparisons"
+    combined_path = comparisons_dir / "combined_comparison.png"
+    summary_path = comparisons_dir / "comparison_summary.md"
     if combined_path.exists():
         st.image(str(combined_path), caption="Shared-latent comparison across model variants")
     else:
@@ -346,7 +396,14 @@ def main() -> None:
 
     st.header("Demo Controls")
     mode, num_samples, spotlight_model = render_sidebar(models)
-    selected_path = resolve_quality_checkpoint() if mode == "quality" else resolve_fast_checkpoint()
+    selected_path = resolve_quality_checkpoint_app() if mode == "quality" else resolve_fast_checkpoint_app()
+    if selected_path is None:
+        st.error("No model artifacts found. Run training/compression locally or add demo artifacts for deployment.")
+        render_problem_statement()
+        render_how_to_read()
+        render_limitations()
+        render_future_work()
+        return
     active_model_name = path_to_model_name(selected_path, models)
     _, load_mode = load_generator(selected_path)
 

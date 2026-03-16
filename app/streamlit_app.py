@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 import torch
@@ -199,6 +200,26 @@ def chart_ready_dataframe(df: pd.DataFrame, value_column: str, label: str) -> pd
     return chart_df
 
 
+def render_metric_chart(df: pd.DataFrame, value_column: str, y_title: str, chart_title: str) -> None:
+    chart_df = chart_ready_dataframe(df, value_column, y_title)
+    chart = (
+        alt.Chart(chart_df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("compression_level:Q", title="Compression Level (%)"),
+            y=alt.Y(f"{y_title}:Q", title=y_title, scale=alt.Scale(zero=True)),
+            color=alt.Color("display_name:N", title="Model"),
+            tooltip=[
+                alt.Tooltip("display_name:N", title="Model"),
+                alt.Tooltip("compression_level:Q", title="Compression Level (%)"),
+                alt.Tooltip(f"{y_title}:Q", title=y_title, format=".3f"),
+            ],
+        )
+        .properties(title=chart_title, height=260)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
 def render_sidebar(models: Dict[str, Path]) -> tuple[str, int, str]:
     comparison_choices = list(models.keys())
     baseline_index = comparison_choices.index("baseline") if "baseline" in comparison_choices else 0
@@ -314,6 +335,14 @@ def render_research_contribution() -> None:
         "The dashboard supports both visual and numerical comparison of efficiency-quality tradeoffs, making the "
         "deployment story easier to inspect than a model-only experiment. This type of framework can support "
         "research in efficient generative AI and more sustainable deployment settings."
+    )
+
+
+def render_research_question() -> None:
+    st.header("Research Question")
+    st.write(
+        "This prototype explores the hypothesis that adaptive compression and runtime model selection can maintain "
+        "acceptable generative output fidelity while meeting strict edge latency and memory constraints."
     )
 
 
@@ -444,15 +473,24 @@ def render_performance_summary() -> None:
     if raw_df is not None:
         st.subheader("Experiment Graphs")
         chart_cols = st.columns(3)
-        size_df = chart_ready_dataframe(raw_df, "model_size_mb", "Model Size (MB)")
-        latency_df = chart_ready_dataframe(raw_df, "avg_latency_ms", "Latency (ms)")
-        throughput_df = chart_ready_dataframe(raw_df, "throughput_samples_per_sec", "Throughput")
         chart_cols[0].caption("Chart 1: Compression level vs model size")
-        chart_cols[0].line_chart(size_df.set_index("compression_level")["Model Size (MB)"])
+        with chart_cols[0]:
+            render_metric_chart(raw_df, "model_size_mb", "Model Size (MB)", "Compression vs Model Size")
         chart_cols[1].caption("Chart 2: Compression level vs latency")
-        chart_cols[1].line_chart(latency_df.set_index("compression_level")["Latency (ms)"])
+        with chart_cols[1]:
+            render_metric_chart(raw_df, "avg_latency_ms", "Latency (ms)", "Compression vs Latency")
         chart_cols[2].caption("Chart 3: Compression level vs throughput")
-        chart_cols[2].line_chart(throughput_df.set_index("compression_level")["Throughput"])
+        with chart_cols[2]:
+            render_metric_chart(
+                raw_df,
+                "throughput_samples_per_sec",
+                "Throughput (samples/sec)",
+                "Compression vs Throughput",
+            )
+        st.info(
+            "Moderate pruning (20-40%) provides the best balance between efficiency and visual structure retention. "
+            "Aggressive compression and quantization offer strong deployment advantages but increase perceptual artifact risk."
+        )
 
     df = benchmark_dataframe()
     if df is None:
@@ -535,6 +573,7 @@ def main() -> None:
     render_problem_statement()
     render_how_to_read()
     render_pipeline_diagram()
+    render_research_question()
     render_research_contribution()
     render_selection_summary(mode, spotlight_model, num_samples, active_model_name, selected_path, load_mode)
     render_generated_output(mode, active_model_name, selected_path, load_mode, num_samples)

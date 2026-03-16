@@ -242,6 +242,51 @@ def render_how_to_read() -> None:
     )
 
 
+def render_pipeline_diagram() -> None:
+    st.header("Architecture / Pipeline Diagram")
+    st.markdown(
+        """
+```text
+Latent Noise
+    |
+    v
+Generator
+    |
+    v
+Generated Image
+    |
+    v
+Compression Layer
+    |-- Pruning
+    `-- Quantization
+    |
+    v
+Edge Deployment
+    |
+    v
+Adaptive Inference Controller
+    |-- Quality Mode (baseline model)
+    `-- Fast Mode (compressed model)
+```
+        """
+    )
+    st.caption(
+        "This pipeline illustrates how a generative model is compressed and deployed under edge constraints "
+        "with adaptive runtime selection."
+    )
+
+
+def render_research_contribution() -> None:
+    st.header("Research Contribution")
+    st.write(
+        "This prototype demonstrates a system-level study of generative model compression for edge deployment. "
+        "It integrates training, pruning, quantization, benchmarking, and adaptive inference into one workflow. "
+        "The dashboard supports both visual and numerical comparison of efficiency-quality tradeoffs, making the "
+        "deployment story easier to inspect than a model-only experiment. This type of framework can support "
+        "research in efficient generative AI and more sustainable deployment settings."
+    )
+
+
 def render_selection_summary(
     mode: str,
     spotlight_model: str,
@@ -280,6 +325,12 @@ def render_generated_output(
     save_image_grid(images, grid_path, title=f"{selected_path.stem} ({load_mode})", nrow=4)
     st.image(str(grid_path), caption=f"Live output from {display_path_label(selected_path)}")
     st.write(output_explanation(active_model_name))
+    st.info(
+        "These images are synthetic Fashion-MNIST-style samples generated from random latent noise. "
+        "The dataset resolution is only 28x28 grayscale, and the generator is intentionally lightweight for "
+        "edge deployment research. As a result, outputs may appear noisy or low-detail. The goal of this "
+        "prototype is to demonstrate efficiency-quality tradeoffs, not photorealistic generation."
+    )
 
     if mode == "quality":
         st.caption(
@@ -312,6 +363,10 @@ def comparison_card(column, model_name: str, models: Dict[str, Path]) -> None:
 def render_comparison(models: Dict[str, Path]) -> None:
     st.header("Model Comparison")
     st.write("All comparison outputs below use the same latent vectors so the visual differences are fair.")
+    st.write(
+        "All models are evaluated using identical latent vectors to ensure that visual differences reflect "
+        "compression effects rather than input randomness."
+    )
 
     root = active_artifact_root()
     comparisons_dir = root / "samples" / "comparisons"
@@ -340,6 +395,10 @@ def render_comparison(models: Dict[str, Path]) -> None:
 def render_performance_summary() -> None:
     st.header("Performance Summary")
     st.write("This table summarizes the efficiency-quality tradeoff across model variants.")
+    st.write(
+        "This performance table shows how model compression impacts memory footprint, inference latency, and "
+        "throughput. Compression improves efficiency but may reduce visual fidelity."
+    )
     df = benchmark_dataframe()
     if df is None:
         st.info("Benchmark results not found yet. Run benchmark/benchmark.py to populate this section.")
@@ -378,6 +437,18 @@ def render_future_work() -> None:
     )
 
 
+def render_potential_research_extensions() -> None:
+    st.header("Potential Research Extensions")
+    st.markdown(
+        "- Layer-specific or sensitivity-aware pruning strategies.\n"
+        "- Low-data generative training and data-efficient adaptation.\n"
+        "- Diffusion model compression for edge devices.\n"
+        "- Hardware-aware runtime scheduling.\n"
+        "- Deployment experiments on Raspberry Pi or Jetson platforms.\n"
+        "- More rigorous quality metrics such as FID or perceptual similarity."
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title="EdgeGen Demo", layout="wide")
     set_seed(42)
@@ -408,6 +479,8 @@ def main() -> None:
 
     render_problem_statement()
     render_how_to_read()
+    render_pipeline_diagram()
+    render_research_contribution()
     render_selection_summary(mode, spotlight_model, num_samples, active_model_name, selected_path, load_mode)
     render_generated_output(mode, active_model_name, selected_path, load_mode, num_samples)
     render_comparison(models)
@@ -415,6 +488,7 @@ def main() -> None:
     render_takeaways()
     render_limitations()
     render_future_work()
+    render_potential_research_extensions()
 
 
 if __name__ == "__main__":

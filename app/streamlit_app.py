@@ -313,7 +313,6 @@ def render_comparison(models: Dict[str, Path]) -> None:
     st.header("Model Comparison")
     st.write("All comparison outputs below use the same latent vectors so the visual differences are fair.")
 
-    combined_path = COMPARISONS_DIR / "combined_comparison.png"
     root = active_artifact_root()
     comparisons_dir = root / "samples" / "comparisons"
     combined_path = comparisons_dir / "combined_comparison.png"

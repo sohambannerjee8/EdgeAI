@@ -519,6 +519,23 @@ def render_limitations() -> None:
     )
 
 
+def render_edge_deployment_scenario() -> None:
+    st.header("Edge Deployment Scenario")
+    st.write(
+        "This framework can support generative AI deployment in resource-constrained environments such as:"
+    )
+    st.markdown(
+        "- Smart surveillance cameras generating anomaly prototypes.\n"
+        "- Wearable devices synthesizing personalized visual cues.\n"
+        "- Autonomous drones generating low-latency situational imagery.\n"
+        "- Offline mobile assistants performing lightweight generative tasks."
+    )
+    st.write(
+        "In such settings, adaptive inference can dynamically switch between high-quality generation and fast "
+        "compressed inference depending on latency budgets and available memory."
+    )
+
+
 def render_future_work() -> None:
     st.header("Future Work")
     st.markdown(
@@ -581,6 +598,7 @@ def main() -> None:
     render_performance_summary()
     render_takeaways()
     render_limitations()
+    render_edge_deployment_scenario()
     render_future_work()
     render_potential_research_extensions()
 

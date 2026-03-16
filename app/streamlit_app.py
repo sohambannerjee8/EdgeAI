@@ -169,6 +169,36 @@ def benchmark_dataframe() -> Optional[pd.DataFrame]:
     return df
 
 
+def benchmark_raw_dataframe() -> Optional[pd.DataFrame]:
+    results_path = resolve_artifact_path("benchmarks", "results.csv")
+    if results_path is None or not results_path.exists():
+        return None
+    return pd.read_csv(results_path)
+
+
+def compression_level(model_name: str) -> int:
+    mapping = {
+        "baseline": 0,
+        "pruned_20": 20,
+        "pruned_40": 40,
+        "pruned_60": 60,
+        "best_pruned": 60,
+        "quantized": 0,
+    }
+    return mapping.get(model_name, 0)
+
+
+def chart_ready_dataframe(df: pd.DataFrame, value_column: str, label: str) -> pd.DataFrame:
+    chart_df = df.copy()
+    chart_df["compression_level"] = chart_df["model_name"].apply(compression_level)
+    chart_df["display_name"] = chart_df["model_name"].apply(human_model_name)
+    chart_df = chart_df.sort_values(["compression_level", "display_name"]).reset_index(drop=True)
+    chart_df = chart_df[["display_name", "compression_level", value_column]].rename(
+        columns={value_column: label}
+    )
+    return chart_df
+
+
 def render_sidebar(models: Dict[str, Path]) -> tuple[str, int, str]:
     comparison_choices = list(models.keys())
     baseline_index = comparison_choices.index("baseline") if "baseline" in comparison_choices else 0
@@ -394,11 +424,36 @@ def render_comparison(models: Dict[str, Path]) -> None:
 
 def render_performance_summary() -> None:
     st.header("Performance Summary")
+    st.subheader("Experiment Setup")
+    st.markdown(
+        "- Dataset: Fashion-MNIST (28x28 grayscale)\n"
+        "- Model: Lightweight DCGAN generator\n"
+        "- Compression methods: Magnitude-based pruning and weight-only quantization\n"
+        "- Evaluation metrics:\n"
+        "  - model size (MB)\n"
+        "  - inference latency (ms)\n"
+        "  - throughput\n"
+        "  - qualitative sample comparison"
+    )
     st.write("This table summarizes the efficiency-quality tradeoff across model variants.")
     st.write(
         "This performance table shows how model compression impacts memory footprint, inference latency, and "
         "throughput. Compression improves efficiency but may reduce visual fidelity."
     )
+    raw_df = benchmark_raw_dataframe()
+    if raw_df is not None:
+        st.subheader("Experiment Graphs")
+        chart_cols = st.columns(3)
+        size_df = chart_ready_dataframe(raw_df, "model_size_mb", "Model Size (MB)")
+        latency_df = chart_ready_dataframe(raw_df, "avg_latency_ms", "Latency (ms)")
+        throughput_df = chart_ready_dataframe(raw_df, "throughput_samples_per_sec", "Throughput")
+        chart_cols[0].caption("Chart 1: Compression level vs model size")
+        chart_cols[0].line_chart(size_df.set_index("compression_level")["Model Size (MB)"])
+        chart_cols[1].caption("Chart 2: Compression level vs latency")
+        chart_cols[1].line_chart(latency_df.set_index("compression_level")["Latency (ms)"])
+        chart_cols[2].caption("Chart 3: Compression level vs throughput")
+        chart_cols[2].line_chart(throughput_df.set_index("compression_level")["Throughput"])
+
     df = benchmark_dataframe()
     if df is None:
         st.info("Benchmark results not found yet. Run benchmark/benchmark.py to populate this section.")
